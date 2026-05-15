@@ -41,3 +41,29 @@ app-example
 # generated native folders
 /ios
 /android
+
+# env files
+.env
+.env.local
+.env.development
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+
+# Drizzle generated (commit only when necessário)
+database/migrations/*.sql
+database/migrations/meta/
+
+# Build outputs
+build/
+out/
+
+# OS
+Thumbs.db
