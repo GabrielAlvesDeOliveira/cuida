@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1778809540534,
+      "tag": "0000_ambitious_imperial_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778810041148,
+      "tag": "0001_sparkling_firedrake",
+      "breakpoints": true
+    }
+  ]
+}

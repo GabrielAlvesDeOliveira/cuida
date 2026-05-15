@@ -1,11 +1,11 @@
-import { blob, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const medicine = sqliteTable('medicine', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   brandName: text('brand_name').notNull(),
   ingredient: text('ingredient').notNull(),
   dosage: text('dosage').notNull(),
-  photo: blob('photo'),
+  photo: text('photo'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
 });
 
