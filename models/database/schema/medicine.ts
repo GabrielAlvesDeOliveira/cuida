@@ -5,6 +5,7 @@ export const medicine = sqliteTable('medicine', {
   brandName: text('brand_name').notNull(),
   ingredient: text('ingredient').notNull(),
   dosage: text('dosage').notNull(),
+  notes: text('dosage').notNull(),
   photo: text('photo'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
 });
