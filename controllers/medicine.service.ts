@@ -37,7 +37,7 @@ export function useMedicineModel() {
     return med;
   }, []);
 
-  const updatePhoto = useCallback(async (id: number, photo: ArrayBuffer): Promise<Medicine | undefined> => {
+  const updatePhoto = useCallback(async (id: number, photo: string): Promise<Medicine | undefined> => {
     const med = await medicineModel.updatePhoto(id, photo);
     if (med) setMedicines(prev => prev.map(m => m.id === id ? med : m));
     return med;

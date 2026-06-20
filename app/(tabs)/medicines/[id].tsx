@@ -150,6 +150,21 @@ export default function MedicineDetailScreen() {
         </View>
       </View>
 
+      <TouchableOpacity
+        style={styles.alarmsButton}
+        onPress={() =>
+          router.push({
+            pathname: '/(tabs)/medicines/alarms' as any,
+            params: { medicineId: String(numericId), medicineName: medicine.brandName },
+          })
+        }
+        activeOpacity={0.8}
+      >
+        <Text style={styles.alarmsButtonIcon}>🔔</Text>
+        <Text style={styles.alarmsButtonText}>Gerenciar alarmes</Text>
+        <Text style={styles.alarmsButtonChevron}>›</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.8}>
         <Text style={styles.deleteButtonText}>Remover medicamento</Text>
       </TouchableOpacity>
@@ -225,6 +240,24 @@ const styles = StyleSheet.create({
   },
   switchLabel: { fontSize: 16, fontWeight: '600', color: '#11181C' },
   switchHint: { fontSize: 12, color: '#9BA1A6', marginTop: 2 },
+
+  alarmsButton: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  alarmsButtonIcon: { fontSize: 22 },
+  alarmsButtonText: { flex: 1, fontSize: 16, fontWeight: '600', color: '#11181C' },
+  alarmsButtonChevron: { fontSize: 22, color: '#9BA1A6', fontWeight: '300' },
 
   deleteButton: {
     borderWidth: 1.5,

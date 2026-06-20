@@ -1,11 +1,19 @@
+import { useEffect } from 'react';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
+import * as Notifications from 'expo-notifications';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useDbMigrations } from '@/models/database/migrate';
+import {
+  setupNotificationHandler,
+  setupNotificationChannel,
+} from '@/utils/notifications';
+
+setupNotificationHandler();
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -14,6 +22,62 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { success, error } = useDbMigrations();
+  const router = useRouter();
+
+  useEffect(() => {
+    setupNotificationChannel();
+  }, []);
+
+  // Navigate to alarm-alert when a notification is tapped
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      if (data?.screen === 'alarm-alert' && data?.medicineId) {
+        router.push({
+          pathname: '/alarm-alert' as any,
+          params: {
+            medicineId: String(data.medicineId),
+            alarmId: String(data.alarmId ?? ''),
+          },
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
+
+  // Navigate to alarm-alert when notification received in foreground
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener(notification => {
+      const data = notification.request.content.data as Record<string, unknown>;
+      if (data?.screen === 'alarm-alert' && data?.medicineId) {
+        router.push({
+          pathname: '/alarm-alert' as any,
+          params: {
+            medicineId: String(data.medicineId),
+            alarmId: String(data.alarmId ?? ''),
+          },
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
+
+  // Handle notification that cold-launched the app
+  useEffect(() => {
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (!response) return;
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      if (data?.screen === 'alarm-alert' && data?.medicineId) {
+        router.push({
+          pathname: '/alarm-alert' as any,
+          params: {
+            medicineId: String(data.medicineId),
+            alarmId: String(data.alarmId ?? ''),
+          },
+        });
+      }
+    });
+  }, []);
 
   if (error) {
     return (
@@ -39,6 +103,10 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen
+          name="alarm-alert"
+          options={{ headerShown: false, presentation: 'fullScreenModal' }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

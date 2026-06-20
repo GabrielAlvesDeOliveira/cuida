@@ -12,6 +12,7 @@ export default function MedicinesLayout() {
       <Stack.Screen name="index" options={{ title: 'Medicamentos' }} />
       <Stack.Screen name="new" options={{ title: 'Novo Medicamento', presentation: 'modal' }} />
       <Stack.Screen name="[id]" options={{ title: 'Medicamento' }} />
+      <Stack.Screen name="alarms" options={{ title: 'Alarmes' }} />
     </Stack>
   );
 }
