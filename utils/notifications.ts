@@ -4,12 +4,10 @@ import Constants from 'expo-constants';
 import type { Alarm, Medicine } from '@/models/database';
 
 const isExpoGo = Constants.appOwnership === 'expo';
-Notifications.setAutoServerRegistrationEnabledAsync(false).catch(() => {});
 
 export function setupNotificationHandler() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
       shouldShowBanner: true,

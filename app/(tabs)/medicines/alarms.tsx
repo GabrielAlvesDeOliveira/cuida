@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,18 +10,35 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  ScrollView,
 } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { Audio } from 'expo-av';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useAlarmService } from '@/controllers/alarm.service';
+import { doseLogModel } from '@/models/dose-log.model';
 import { WEEK_DAY_LABELS, alarmRepeatLabel } from '@/models/alarm.model';
-import type { Alarm } from '@/models/database';
+import { ALARM_SOUNDS, DEFAULT_SOUND_ID, getSoundById, previewSound } from '@/utils/sounds';
+import { loadPreferences, savePreferences } from '@/utils/preferences';
+import type { Alarm, DoseLog } from '@/models/database';
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
 function formatTime(date: Date | string | number): string {
   const d = new Date(date);
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function formatDateTime(date: Date | string | number | null | undefined): string {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
 export default function AlarmsScreen() {
@@ -33,8 +50,10 @@ export default function AlarmsScreen() {
   const navigation = useNavigation();
   const { alarms, loading, add, toggleEnabled, remove } = useAlarmService(numericId);
 
+  const [doseHistory, setDoseHistory] = useState<DoseLog[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const [showModal, setShowModal] = useState(false);
-  // Default: all days selected
   const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set(ALL_DAYS));
   const [time, setTime] = useState(() => {
     const d = new Date();
@@ -42,11 +61,44 @@ export default function AlarmsScreen() {
     return d;
   });
   const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+  const [selectedSoundId, setSelectedSoundId] = useState(DEFAULT_SOUND_ID);
+  const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const previewRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     navigation.setOptions({ title: `Alarmes — ${medicineName ?? 'Medicamento'}` });
   }, [medicineName, navigation]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const logs = await doseLogModel.getForMedicine(numericId);
+      setDoseHistory(logs);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [numericId]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const openModal = async () => {
+    const prefs = await loadPreferences();
+    setSelectedSoundId(prefs.alarmSoundId);
+    setSelectedDays(new Set(ALL_DAYS));
+    const d = new Date();
+    d.setHours(8, 0, 0, 0);
+    setTime(d);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    previewRef.current?.stopAsync().catch(() => {});
+    previewRef.current?.unloadAsync().catch(() => {});
+    previewRef.current = null;
+    setPlayingSoundId(null);
+    setShowModal(false);
+  };
 
   const allSelected = selectedDays.size === 7;
 
@@ -54,7 +106,7 @@ export default function AlarmsScreen() {
     setSelectedDays(prev => {
       const next = new Set(prev);
       if (next.has(day)) {
-        if (next.size === 1) return prev; // keep at least one
+        if (next.size === 1) return prev;
         next.delete(day);
       } else {
         next.add(day);
@@ -76,21 +128,20 @@ export default function AlarmsScreen() {
     }
   };
 
-  const openModal = () => {
-    setSelectedDays(new Set(ALL_DAYS));
-    const d = new Date();
-    d.setHours(8, 0, 0, 0);
-    setTime(d);
-    setShowModal(true);
+  const handleSoundPress = async (soundId: string) => {
+    setSelectedSoundId(soundId);
+    setPlayingSoundId(soundId);
+    await previewSound(soundId, previewRef);
+    setTimeout(() => setPlayingSoundId(null), 4100);
   };
 
   const handleSave = async () => {
     if (selectedDays.size === 0) return;
     setSaving(true);
     try {
-      const days = allSelected ? 'all' : Array.from(selectedDays).sort();
-      await add(time, days === 'all' ? 'all' : (days as number[]));
-      setShowModal(false);
+      await savePreferences({ alarmSoundId: selectedSoundId });
+      await add(time, allSelected ? 'all' : Array.from(selectedDays).sort() as number[]);
+      closeModal();
     } catch (e) {
       Alert.alert('Erro', e instanceof Error ? e.message : String(e));
     } finally {
@@ -111,11 +162,36 @@ export default function AlarmsScreen() {
 
   const previewLabel = () => {
     if (allSelected) return 'Todos os dias';
-    return Array.from(selectedDays)
-      .sort()
-      .map(d => WEEK_DAY_LABELS[d])
-      .join(', ');
+    return Array.from(selectedDays).sort().map(d => WEEK_DAY_LABELS[d]).join(', ');
   };
+
+  const historyFooter = (
+    <View style={styles.historySection}>
+      <Text style={styles.historySectionTitle}>Histórico de doses</Text>
+      {historyLoading ? (
+        <ActivityIndicator color="#0a7ea4" style={{ marginVertical: 16 }} />
+      ) : doseHistory.length === 0 ? (
+        <Text style={styles.historyEmpty}>Nenhuma dose registrada ainda.</Text>
+      ) : (
+        doseHistory.map(log => {
+          const taken = !!log.takenAt;
+          return (
+            <View key={log.id} style={styles.historyItem}>
+              <View style={[styles.historyDot, taken ? styles.historyDotTaken : styles.historyDotSkipped]} />
+              <View style={styles.historyItemContent}>
+                <Text style={[styles.historyItemLabel, taken ? styles.historyLabelTaken : styles.historyLabelSkipped]}>
+                  {taken ? 'Tomado' : 'Pulado'}
+                </Text>
+                <Text style={styles.historyItemDate}>
+                  {formatDateTime(taken ? log.takenAt : log.scheduledAt)}
+                </Text>
+              </View>
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -141,6 +217,7 @@ export default function AlarmsScreen() {
             <ActivityIndicator color="#0a7ea4" style={{ marginTop: 32 }} />
           )
         }
+        ListFooterComponent={historyFooter}
         renderItem={({ item }) => (
           <View style={styles.alarmCard}>
             <View style={styles.alarmLeft}>
@@ -166,12 +243,16 @@ export default function AlarmsScreen() {
         <Text style={styles.fabText}>+ Adicionar alarme</Text>
       </TouchableOpacity>
 
-      <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
+      <Modal visible={showModal} transparent animationType="slide" onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.modalTitle}>Novo alarme</Text>
 
-            {/* All days toggle */}
             <TouchableOpacity
               style={[styles.allDaysBtn, allSelected && styles.allDaysBtnActive]}
               onPress={toggleAllDays}
@@ -182,7 +263,6 @@ export default function AlarmsScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Day multi-select */}
             <View style={styles.daysRow}>
               {WEEK_DAY_LABELS.map((label, index) => {
                 const active = selectedDays.has(index);
@@ -201,9 +281,7 @@ export default function AlarmsScreen() {
               })}
             </View>
 
-            {/* Time picker */}
             <Text style={styles.sectionLabel}>Horário</Text>
-
             {Platform.OS === 'ios' ? (
               <DateTimePicker
                 value={time}
@@ -236,10 +314,38 @@ export default function AlarmsScreen() {
               </>
             )}
 
-            {/* Preview */}
+            <Text style={styles.sectionLabel}>Som do alarme</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.soundRow}
+            >
+              {ALARM_SOUNDS.map(sound => {
+                const active = selectedSoundId === sound.id;
+                const playing = playingSoundId === sound.id;
+                return (
+                  <TouchableOpacity
+                    key={sound.id}
+                    style={[styles.soundChip, active && styles.soundChipActive]}
+                    onPress={() => handleSoundPress(sound.id)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.soundChipIcon}>{playing ? '🔊' : '♪'}</Text>
+                    <Text style={[styles.soundChipLabel, active && styles.soundChipLabelActive]}>
+                      {sound.label}
+                    </Text>
+                    {active && <View style={styles.soundChipDot} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             <View style={styles.previewBox}>
               <Text style={styles.previewText}>
                 🔔 {previewLabel()} às {formatTime(time)}
+              </Text>
+              <Text style={styles.previewSound}>
+                ♪ {getSoundById(selectedSoundId).label}
               </Text>
             </View>
 
@@ -255,10 +361,10 @@ export default function AlarmsScreen() {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.cancelModalBtn} onPress={() => setShowModal(false)}>
+            <TouchableOpacity style={styles.cancelModalBtn} onPress={closeModal}>
               <Text style={styles.cancelModalBtnText}>Cancelar</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -313,7 +419,54 @@ const styles = StyleSheet.create({
   },
   fabText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 
+  historySection: {
+    marginTop: 24,
+    paddingBottom: 16,
+  },
+  historySectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#9BA1A6',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
+  historyEmpty: {
+    fontSize: 14,
+    color: '#9BA1A6',
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  historyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  historyDotTaken: { backgroundColor: '#16a34a' },
+  historyDotSkipped: { backgroundColor: '#EF4444' },
+  historyItemContent: { gap: 1 },
+  historyItemLabel: { fontSize: 14, fontWeight: '700' },
+  historyLabelTaken: { color: '#16a34a' },
+  historyLabelSkipped: { color: '#EF4444' },
+  historyItemDate: { fontSize: 12, color: '#9BA1A6' },
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalScroll: { maxHeight: '90%' },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
@@ -367,13 +520,38 @@ const styles = StyleSheet.create({
   androidTimeText: { fontSize: 36, fontWeight: '700', color: '#11181C', letterSpacing: 2 },
   androidTimeTap: { fontSize: 12, color: '#9BA1A6', marginTop: 4 },
 
+  soundRow: { gap: 8, paddingVertical: 4 },
+  soundChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F4F6F8',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  soundChipActive: { backgroundColor: '#E8F4F8', borderColor: '#0a7ea4' },
+  soundChipIcon: { fontSize: 14 },
+  soundChipLabel: { fontSize: 13, fontWeight: '600', color: '#687076' },
+  soundChipLabelActive: { color: '#0a7ea4' },
+  soundChipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0a7ea4',
+  },
+
   previewBox: {
     backgroundColor: '#E8F4F8',
     borderRadius: 10,
     paddingVertical: 10,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 2,
   },
-  previewText: { fontSize: 14, fontWeight: '600', color: '#0a7ea4' },
+  previewText: { fontSize: 14, fontWeight: '600', color: '#0a7ea4', textAlign: 'center' },
+  previewSound: { fontSize: 12, color: '#0a7ea4', textAlign: 'center', opacity: 0.8 },
 
   confirmBtn: {
     backgroundColor: '#0a7ea4',

@@ -13,7 +13,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { medicineModel } from '@/models/medicine.model';
 import { MedicineForm } from '@/components/medicines/medicine-form';
-import { pickImage, photoToDataUri } from '@/utils/image';
+import { pickImage, captureImage, photoToDataUri } from '@/utils/image';
 import type { Medicine, NewMedicine } from '@/models/database';
 
 export default function MedicineDetailScreen() {
@@ -57,16 +57,40 @@ export default function MedicineDetailScreen() {
     }
   };
 
-  const handleUpdatePhoto = async () => {
-    const result = await pickImage();
-    if (!result) return;
-    try {
-      await medicineModel.updatePhoto(numericId, result.base64);
-      await load();
-    } catch (e) {
-      console.error('[MedicineDetail] photo update failed:', e);
-      Alert.alert('Erro', String(e instanceof Error ? e.message : e));
-    }
+  const handleUpdatePhoto = () => {
+    Alert.alert(
+      'Foto do medicamento',
+      'Escolha a origem da foto',
+      [
+        {
+          text: 'Câmera',
+          onPress: async () => {
+            const result = await captureImage();
+            if (!result) return;
+            try {
+              await medicineModel.updatePhoto(numericId, result.base64);
+              await load();
+            } catch (e) {
+              Alert.alert('Erro', String(e instanceof Error ? e.message : e));
+            }
+          },
+        },
+        {
+          text: 'Galeria',
+          onPress: async () => {
+            const result = await pickImage();
+            if (!result) return;
+            try {
+              await medicineModel.updatePhoto(numericId, result.base64);
+              await load();
+            } catch (e) {
+              Alert.alert('Erro', String(e instanceof Error ? e.message : e));
+            }
+          },
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
   };
 
   const handleToggleActive = async (value: boolean) => {

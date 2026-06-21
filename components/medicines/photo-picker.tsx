@@ -1,6 +1,6 @@
 import { StyleSheet, TouchableOpacity, View, Text, Alert } from 'react-native';
 import { Image } from 'expo-image';
-import { pickImage } from '@/utils/image';
+import { pickImage, captureImage } from '@/utils/image';
 
 type Props = {
   uri: string | null;
@@ -8,10 +8,30 @@ type Props = {
 };
 
 export function PhotoPicker({ uri, onPick }: Props) {
-  const handlePress = async () => {
-    const result = await pickImage();
-    if (!result) return;
-    onPick(result.base64, result.uri);
+  const handlePress = () => {
+    Alert.alert(
+      'Foto do medicamento',
+      'Escolha a origem da foto',
+      [
+        {
+          text: 'Câmera',
+          onPress: async () => {
+            const result = await captureImage();
+            if (!result) return;
+            onPick(result.base64, result.uri);
+          },
+        },
+        {
+          text: 'Galeria',
+          onPress: async () => {
+            const result = await pickImage();
+            if (!result) return;
+            onPick(result.base64, result.uri);
+          },
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
   };
 
   return (
